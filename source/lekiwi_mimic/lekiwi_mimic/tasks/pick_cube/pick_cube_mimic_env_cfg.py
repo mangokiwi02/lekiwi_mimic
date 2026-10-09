@@ -52,6 +52,12 @@ class MobileNavCfg:
     overshoot_dist: float = 0.5
     overshoot_speed: float = 0.15
     overshoot_time: float = 0.8
+    stall_prob: float = 0.0
+    """Fraction of episodes braked while still far: a push away from the goal (``stall_speed``) for ``stall_time`` when
+    the goal distance drops below a random value in ``stall_dist_range``. Covers "slow but still far" states."""
+    stall_dist_range: tuple[float, float] = (0.15, 0.8)
+    stall_speed: float = 0.25
+    stall_time: float = 0.6
 
 
 def _pick_cube_subtasks() -> list[SubTaskConfig]:

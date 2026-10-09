@@ -24,6 +24,7 @@ parser.add_argument("--exec_noise_std", type=float, default=0.0, help="DART: OU 
 parser.add_argument("--goal_rel_xy", type=float, nargs=2, default=None, help="fixed cube (x, y) in the base frame at the nav goal")
 parser.add_argument("--rel_xy_noise", type=float, default=None)
 parser.add_argument("--exec_noise_near_dist", type=float, default=None)
+parser.add_argument("--stall_prob", type=float, default=0.0, help="DART: fraction of episodes braked while still far")
 parser.add_argument("--overshoot_prob", type=float, default=0.0, help="DART: fraction of episodes pushed past the nav goal")
 AppLauncher.add_app_launcher_args(parser)
 args = parser.parse_args()
@@ -89,6 +90,7 @@ def main():
         env_cfg.datagen_config.seed = args.seed
     env_cfg.nav.exec_noise_std = args.exec_noise_std
     env_cfg.nav.overshoot_prob = args.overshoot_prob
+    env_cfg.nav.stall_prob = args.stall_prob
     if args.goal_rel_xy is not None:
         env_cfg.nav.goal_rel_xy = tuple(args.goal_rel_xy)
     if args.rel_xy_noise is not None:

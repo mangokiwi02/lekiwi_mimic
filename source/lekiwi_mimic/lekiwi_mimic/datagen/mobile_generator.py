@@ -37,6 +37,8 @@ class NavPhaseStats:
     reached: bool
     overshoot: bool = False
     """DART: this phase got the forward push past the goal."""
+    stall: bool = False
+    """DART: this phase got a brake push (slow while still far from the goal)."""
 
 
 @dataclass
@@ -49,7 +51,8 @@ class ExecPerturbation:
     """Execution-only base velocity offset for one navigation phase (DART), see ``MobileNavCfg.exec_noise_*``.
 
     An Ornstein-Uhlenbeck process (stronger near the goal, off inside the settle radius) plus, in a fraction of the
-    episodes, a push toward the goal when the base first comes within the near distance.
+    episodes, a push toward the goal when the base first comes within ``overshoot_dist`` (too fast / past the goal),
+    and in another fraction a push away from the goal at a random distance (slow while still far).
     """
 
     def __init__(self, cfg, dt: float):
@@ -58,11 +61,15 @@ class ExecPerturbation:
         self.overshoot = random.random() < cfg.overshoot_prob
         self.push_dir: torch.Tensor | None = None
         self.push_left = 0.0
+        self.stall = random.random() < cfg.stall_prob
+        self.stall_at = random.uniform(*cfg.stall_dist_range)
+        self.stall_dir: torch.Tensor | None = None
+        self.stall_left = 0.0
 
     def step(self, base: torch.Tensor, goal: torch.Tensor) -> torch.Tensor:
         cfg = self.cfg
         out = torch.zeros(3, device=base.device)
-        if cfg.exec_noise_std <= 0 and not self.overshoot:
+        if cfg.exec_noise_std <= 0 and not self.overshoot and not self.stall:
             return out
         e = goal[:2] - base[:2]
         d = float(e.norm())
@@ -80,6 +87,11 @@ class ExecPerturbation:
         if self.push_dir is not None and self.push_left > 0:
             out[:2] += cfg.overshoot_speed * self.push_dir
             self.push_left -= self.dt
+        if self.stall and self.stall_dir is None and d < self.stall_at:
+            self.stall_dir, self.stall_left = -e / max(d, 1e-6), cfg.stall_time
+        if self.stall_dir is not None and self.stall_left > 0:
+            out[:2] += cfg.stall_speed * self.stall_dir
+            self.stall_left -= self.dt
         return out
 
 
@@ -163,7 +175,7 @@ class MobileDataGenerator(DataGenerator):
         if reached:
             for _ in range(self.nav_cfg.settle_steps):
                 await self._execute(hold, env_id, success_term, env_action_queue, buf)
-        return NavPhaseStats(subtask_ind, start.tolist(), goal.tolist(), steps, reached, perturb.overshoot)
+        return NavPhaseStats(subtask_ind, start.tolist(), goal.tolist(), steps, reached, perturb.overshoot, perturb.stall)
 
     # ------------------------------------------------------------------
     # main loop
