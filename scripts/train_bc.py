@@ -26,6 +26,7 @@ p.add_argument("--seed", type=int, default=0)
 p.add_argument("--history", type=int, default=2)
 p.add_argument("--chunk", type=int, default=10)
 p.add_argument("--base_vel", action="store_true", help="add measured base velocity to the observation")
+p.add_argument("--phase", action="store_true", help="privileged drive/grasp phase flag (upper bound only)")
 p.add_argument("--vel_weight", type=float, default=1.0, help="loss weight of the base velocity dims")
 args = p.parse_args()
 
@@ -33,7 +34,7 @@ torch.manual_seed(args.seed)
 np.random.seed(args.seed)
 obs_l, act_l, n_demos = [], [], 0
 for path in args.data:
-    o, a, n = load_dataset(path, args.gripper_joint_index, args.max_demos, args.history, args.chunk, {"base_vel": args.base_vel})
+    o, a, n = load_dataset(path, args.gripper_joint_index, args.max_demos, args.history, args.chunk, {"base_vel": args.base_vel, "phase": args.phase})
     obs_l.append(o)
     act_l.append(a)
     n_demos += n
@@ -41,7 +42,7 @@ obs, act = np.concatenate(obs_l), np.concatenate(act_l)
 print(f"{n_demos} demos, {len(obs)} samples")
 
 dev = "cuda" if torch.cuda.is_available() else "cpu"
-model = BCPolicy(history=args.history, chunk=args.chunk, base_vel=args.base_vel).to(dev)
+model = BCPolicy(history=args.history, chunk=args.chunk, base_vel=args.base_vel, phase=args.phase).to(dev)
 model.set_normalization(obs, act)
 O, A = torch.from_numpy(obs).to(dev), torch.from_numpy(act).to(dev)
 A_n = (A - model.act_mean) / model.act_std

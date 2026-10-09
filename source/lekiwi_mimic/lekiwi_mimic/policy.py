@@ -5,6 +5,8 @@ Observation (all in the moving base frame, so the policy is invariant to where t
     eef position (3) + eef quaternion (4) + gripper joint position (1)
     optionally (``base_vel=True``) the measured base velocity in the body frame (3): without it the policy cannot
     tell how fast it is approaching and so when to start braking
+    optionally (``phase=True``) a 0/1 flag that is 1 once the drive has ended. This is privileged information (at
+    rollout time it comes from the true cube distance) and is only used for an upper-bound experiment
 Action:
     eef target position as a delta from the current eef position (3) + eef target quaternion (4) + gripper command (1)
     + base velocity in the *body* frame (3)
@@ -40,11 +42,14 @@ def make_obs(
     ee_pose_b: torch.Tensor,
     gripper_pos: torch.Tensor,
     base_vel_b: torch.Tensor | None = None,
+    phase: torch.Tensor | None = None,
 ) -> torch.Tensor:
     yaw4 = 4 * _yaw_from_quat(cube_pose_b[..., 3:7])
     parts = [cube_pose_b[..., :3], torch.sin(yaw4)[..., None], torch.cos(yaw4)[..., None], ee_pose_b, gripper_pos[..., None]]
     if base_vel_b is not None:
         parts.append(base_vel_b)
+    if phase is not None:
+        parts.append(phase[..., None].to(cube_pose_b.dtype))
     return torch.cat(parts, dim=-1)
 
 
@@ -90,13 +95,19 @@ def demo_arrays(demo, history: int, chunk: int, obs_cfg: dict, gripper_joint_ind
     base_vel = None
     if obs_cfg.get("base_vel"):
         base_vel = base_vel_body(torch.from_numpy(o["joint_vel"][:, :3]).float(), yaw)
+    act = root_to_body_base_vel(torch.from_numpy(demo["actions"][:]).float(), yaw)
+    phase = None
+    if obs_cfg.get("phase"):
+        moving = (act[:, 8:10].norm(dim=-1) > 1e-4).nonzero()
+        t_stop = int(moving[-1]) + 1 if len(moving) else 0
+        phase = (torch.arange(len(act)) >= t_stop).float()
     obs = make_obs(
         cube,
         torch.from_numpy(o["ee_pose_base"][:]).float(),
         torch.from_numpy(o["joint_pos"][:, gripper_joint_index]).float(),
         base_vel,
+        phase,
     )
-    act = root_to_body_base_vel(torch.from_numpy(demo["actions"][:]).float(), yaw)
     ee_pos = torch.from_numpy(o["ee_pose_base"][:, :3]).float()
     info = {"cube_dist": cube[:, :2].norm(dim=-1).numpy()}
     return _stack_history(obs, history).numpy(), _chunk_actions(act, ee_pos, chunk).numpy(), info
@@ -125,12 +136,21 @@ def load_dataset(
 class BCPolicy(nn.Module):
     """MLP over ``history`` stacked observations predicting ``chunk`` future actions (ACT-style chunking)."""
 
-    def __init__(self, hidden: int = 512, depth: int = 4, history: int = 1, chunk: int = 1, base_vel: bool = False):
+    def __init__(
+        self,
+        hidden: int = 512,
+        depth: int = 4,
+        history: int = 1,
+        chunk: int = 1,
+        base_vel: bool = False,
+        phase: bool = False,
+    ):
         super().__init__()
         self.history, self.chunk = history, chunk
-        self.obs_cfg = {"base_vel": base_vel}
+        self.obs_cfg = {"base_vel": base_vel, "phase": phase}
         self.kwargs = {"hidden": hidden, "depth": depth, "history": history, "chunk": chunk, "base_vel": base_vel}
-        self.obs_dim = OBS_DIM + 3 * base_vel
+        self.kwargs["phase"] = phase
+        self.obs_dim = OBS_DIM + 3 * base_vel + phase
         in_dim, out_dim = self.obs_dim * history, ACT_DIM * chunk
         layers, d = [], in_dim
         for _ in range(depth):

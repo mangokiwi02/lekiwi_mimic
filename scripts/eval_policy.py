@@ -18,6 +18,7 @@ parser.add_argument("--seed", type=int, default=1234)
 parser.add_argument("--out", default=None)
 parser.add_argument("--debug", action="store_true", help="print env 0 every 30 steps")
 parser.add_argument("--trace", action="store_true", help="save per-step cube distance / speed command of the first batch")
+parser.add_argument("--phase_dist", type=float, default=0.23, help="privileged phase flag turns on below this cube distance")
 parser.add_argument("--ensemble_decay", type=float, default=0.1, help="temporal ensembling weight exp(-decay*age)")
 AppLauncher.add_app_launcher_args(parser)
 args = parser.parse_args()
@@ -68,11 +69,16 @@ def main():
             dist0 = cube_b[:, :2].norm(dim=-1)
             done = torch.zeros(env.num_envs, dtype=torch.bool, device=env.device)
             t_done = torch.full((env.num_envs,), -1, device=env.device)
+            phase = torch.zeros(env.num_envs, dtype=torch.bool, device=env.device)
             for t in range(args.max_steps):
                 o = env.obs_buf["policy"]
                 yaw = env.base_pose_2d()[:, 2]
                 vel = base_vel_body(robot.data.joint_vel[:, base_idx], yaw) if policy.obs_cfg["base_vel"] else None
-                obs = make_obs(o["cube_pose_base"], o["ee_pose_base"], robot.data.joint_pos[:, g_idx], vel)
+                ph = None
+                if policy.obs_cfg.get("phase"):
+                    phase |= o["cube_pose_base"][:, :2].norm(dim=-1) <= args.phase_dist
+                    ph = phase.float()
+                obs = make_obs(o["cube_pose_base"], o["ee_pose_base"], robot.data.joint_pos[:, g_idx], vel, ph)
                 a = helper(obs, o["ee_pose_base"][:, :3])
                 if args.trace and not results:
                     # done episodes are masked so the plot only shows the approach of unfinished ones
