@@ -1,0 +1,14 @@
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "lekiwi_mimic"
+version = "0.1.0"
+description = "Mobile Mimic data generation for LeKiwi on LeIsaac: static arm demos -> far-pick demos"
+license = {text = "Apache-2.0"}
+requires-python = ">=3.10"
+dependencies = []
+
+[tool.setuptools.packages.find]
+include = ["lekiwi_mimic*"]

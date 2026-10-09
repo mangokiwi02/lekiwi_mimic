@@ -1,0 +1,23 @@
+[workspace]
+name = "lekiwi-mimic"
+channels = ["conda-forge"]
+platforms = ["win-64", "linux-64"]
+
+[dependencies]
+python = "3.11.*"
+pip = "*"
+
+[target.win-64.activation.env]
+LEISAAC_ASSETS_ROOT = "%PIXI_PROJECT_ROOT%/third_party/leisaac/assets"
+
+[tasks]
+# The pip-only stack pinned by LeIsaac (Isaac Sim 5.1 / Isaac Lab 2.3 submodule / torch 2.7 cu128) is installed by
+# scripts/setup_env.sh, because Isaac Sim wheels come from pypi.nvidia.com and torch from the cu128 index.
+setup = "bash scripts/setup_env.sh"
+test = "python -m pytest tests -q"
+
+[target.linux-64.activation.env]
+LEISAAC_ASSETS_ROOT = "$PIXI_PROJECT_ROOT/third_party/leisaac/assets"
+
+[activation.env]
+OMNI_KIT_ACCEPT_EULA = "YES"

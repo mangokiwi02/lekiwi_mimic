@@ -1,0 +1,6 @@
+.pixi/
+logs/
+datasets/
+outputs/
+__pycache__/
+*.egg-info/
